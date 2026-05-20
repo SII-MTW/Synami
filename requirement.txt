@@ -1,0 +1,22 @@
+# ==========================================
+# Umami Synergy Prediction Dependencies
+# ==========================================
+
+# Core Deep Learning & Matrix Operations
+torch>=2.0.0
+numpy>=1.23.0
+pandas>=2.0.0
+
+# Machine Learning & Utils
+scikit-learn>=1.2.0
+joblib>=1.2.0
+tqdm>=4.65.0
+
+# Cheminformatics & Bioinformatics
+rdkit>=2023.09.1
+fair-esm>=0.4.0
+
+# Visualization & Interpretability
+matplotlib>=3.7.0
+seaborn>=0.12.0
+shap>=0.43.0
