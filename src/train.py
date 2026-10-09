@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 import pandas as pd
 import numpy as np
 import os
@@ -61,18 +61,27 @@ def main():
 
     dataset = PureVAEDataset(FILE_PHYS, FILE_ESM)
     joblib.dump(dataset.scaler, SCALER_SAVE_PATH)
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    
+    total_size = len(dataset)
+    train_size = int(0.8 * total_size)
+    test_size = total_size - train_size
+    
+    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+    
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    
     input_dim = dataset.X.shape[1]
 
     model = PureVAE(input_dim, LATENT_DIM).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    model.train()
     for epoch in range(EPOCHS):
-        total_recon = 0
-        total_kl = 0
+        model.train()
+        train_recon = 0
+        train_kl = 0
         
-        for batch_x in dataloader:
+        for batch_x in train_loader:
             batch_x = batch_x.to(device)
             
             recon, mu, logvar = model(batch_x)
@@ -86,11 +95,33 @@ def main():
             loss.backward()
             optimizer.step()
             
-            total_recon += loss_recon.item()
-            total_kl += loss_kl.item()
+            train_recon += loss_recon.item()
+            train_kl += loss_kl.item()
+
+        model.eval()
+        test_recon = 0
+        test_kl = 0
+        
+        with torch.no_grad():
+            for batch_x in test_loader:
+                batch_x = batch_x.to(device)
+                recon, mu, logvar = model(batch_x)
+                
+                loss_recon = nn.functional.mse_loss(recon, batch_x)
+                loss_kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / batch_x.size(0)
+                
+                test_recon += loss_recon.item()
+                test_kl += loss_kl.item()
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch [{epoch+1}/{EPOCHS}] | Recon Loss: {total_recon/len(dataloader):.4f} | KL Loss: {total_kl/len(dataloader):.4f}")
+            avg_train_recon = train_recon / len(train_loader)
+            avg_train_kl = train_kl / len(train_loader)
+            avg_test_recon = test_recon / len(test_loader)
+            avg_test_kl = test_kl / len(test_loader)
+            
+            print(f"Epoch [{epoch+1}/{EPOCHS}] | "
+                  f"Train (Recon: {avg_train_recon:.4f} KL: {avg_train_kl:.4f}) | "
+                  f"Test (Recon: {avg_test_recon:.4f} KL: {avg_test_kl:.4f})")
 
     print(f"[*] Saving model to {MODEL_SAVE_PATH}")
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
